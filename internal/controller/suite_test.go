@@ -22,6 +22,7 @@ import (
 	logf "sigs.k8s.io/controller-runtime/pkg/log"
 	"sigs.k8s.io/controller-runtime/pkg/log/zap"
 	"sigs.k8s.io/controller-runtime/pkg/manager"
+	metricsserver "sigs.k8s.io/controller-runtime/pkg/metrics/server"
 
 	clustersecretiov2 "github.com/zakkg3/ClusterSecret/api/v2"
 	// +kubebuilder:scaffold:imports
@@ -81,6 +82,9 @@ var _ = BeforeSuite(func() {
 	// See: https://github.com/kubernetes-sigs/kubebuilder/blob/v4.7.1/docs/book/src/cronjob-tutorial/testdata/project/internal/controller/suite_test.go#L121-L158
 	k8sManager, err = ctrl.NewManager(cfg, ctrl.Options{
 		Scheme: scheme.Scheme,
+		Metrics: metricsserver.Options{
+			BindAddress: "0", // Disable metrics server in tests
+		},
 	})
 	Expect(err).ToNot(HaveOccurred())
 
