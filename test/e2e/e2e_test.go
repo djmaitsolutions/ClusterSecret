@@ -210,7 +210,7 @@ var _ = Describe("Manager", Ordered, func() {
 							"name": "curl",
 							"image": "curlimages/curl:latest",
 							"command": ["/bin/sh", "-c"],
-							"args": ["curl -v -k -H 'Authorization: Bearer %s' https://%s.%s.svc.cluster.local:8443/metrics"],
+							"args": ["curl -sf -k -H 'Authorization: Bearer %s' https://%s.%s.svc.cluster.local:8443/metrics"],
 							"securityContext": {
 								"allowPrivilegeEscalation": false,
 								"capabilities": {
@@ -359,11 +359,8 @@ func getMetricsOutput() string {
 	cmd := exec.Command("kubectl", "logs", "curl-metrics", "-n", namespace)
 	metricsOutput, err := utils.Run(cmd)
 	Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-	// Check for successful HTTP response (HTTP/1.1 or HTTP/2)
-	Expect(metricsOutput).To(SatisfyAny(
-		ContainSubstring("< HTTP/1.1 200"),
-		ContainSubstring("< HTTP/2 200"),
-	), "Expected HTTP 200 response from metrics endpoint")
+	// With curl -sf, a successful response means HTTP 2xx - just verify we got metrics output
+	Expect(metricsOutput).NotTo(BeEmpty(), "Expected metrics output from endpoint")
 	return metricsOutput
 }
 
