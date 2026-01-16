@@ -2,9 +2,7 @@ name: Unit Tests
 
 on:
   push:
-    branches: [master, Go]
   pull_request:
-    branches: [master, Go]
 
 jobs:
   unit-tests:
