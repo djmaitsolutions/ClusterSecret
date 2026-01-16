@@ -39,6 +39,19 @@ jobs:
         run: make test-e2e
         env:
           KIND_CLUSTER: clustersecret-operator
+        timeout-minutes: 15
+
+      - name: Debug - Show cluster state
+        if: always()
+        run: |
+          echo "=== Docker images in Kind ==="
+          docker exec clustersecret-operator-control-plane crictl images || true
+          echo "=== Deployments ==="
+          kubectl get deployments -A || true
+          echo "=== Pods ==="
+          kubectl get pods -A || true
+          echo "=== Pod details in clustersecret-system ==="
+          kubectl describe pods -n clustersecret-system || true
 
       - name: Collect logs on failure
         if: failure()
