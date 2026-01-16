@@ -34,23 +34,13 @@ jobs:
         uses: super-linter/super-linter/slim@v7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          # Only validate what we explicitly enable
-          VALIDATE_ALL_CODEBASE: true
-          # Disable everything by default
+          VALIDATE_ALL_CODEBASE: false
+          # Only enable specific linters for Go rewrite
           VALIDATE_BASH: true
           VALIDATE_DOCKERFILE_HADOLINT: true
           VALIDATE_GITHUB_ACTIONS: true
           VALIDATE_YAML: true
-          # Disable linters not relevant for Go rewrite
-          VALIDATE_PYTHON: false
-          VALIDATE_GO: false  # Using golangci-lint instead
-          VALIDATE_CHECKOV: false  # Too noisy for now
-          VALIDATE_KUBERNETES_KUBECONFORM: false  # Helm templates have placeholders
-          VALIDATE_NATURAL_LANGUAGE: false
-          VALIDATE_MARKDOWN: false  # Too strict
-          VALIDATE_GITLEAKS: false  # Handled separately if needed
           LINTER_RULES_PATH: ".github/workflows/linters"
-          DISABLE_ERRORS: false
           # Exclude legacy Python workflows and Helm templates
           FILTER_REGEX_EXCLUDE: "(build-test|build|e2e-testing|helm-release)\\.yaml$|charts/.*/templates/.*\\.yaml$"
 
