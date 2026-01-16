@@ -2,36 +2,57 @@
 name: Lint
 
 on:  # yamllint disable-line rule:truthy
-  push: null
-  pull_request: null
+  push:
+  pull_request:
 
 jobs:
-  build:
+  lint:
     name: Lint
     runs-on: ubuntu-latest
 
     permissions:
       contents: read
       packages: read
-      # To report GitHub Actions status checks
       statuses: write
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          # super-linter needs the full git history to get the
-          # list of files that changed across commits
           fetch-depth: 0
 
-      - name: Super-linter
-        uses: super-linter/super-linter@v6.3.0  # x-release-please-version
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Go lint (golangci-lint)
+        run: make lint
+
+      - name: Super-linter (non-Go files)
+        uses: super-linter/super-linter/slim@v7
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          VALIDATE_PYTHON: true
-          VALIDATE_GO: false  # Go files need module context, disable individual file linting
+          # Only validate what we explicitly enable
+          VALIDATE_ALL_CODEBASE: true
+          # Disable everything by default
+          VALIDATE_BASH: true
+          VALIDATE_DOCKERFILE_HADOLINT: true
+          VALIDATE_GITHUB_ACTIONS: true
+          VALIDATE_YAML: true
+          # Disable linters not relevant for Go rewrite
+          VALIDATE_PYTHON: false
+          VALIDATE_GO: false  # Using golangci-lint instead
+          VALIDATE_CHECKOV: false  # Too noisy for now
+          VALIDATE_KUBERNETES_KUBECONFORM: false  # Helm templates have placeholders
+          VALIDATE_NATURAL_LANGUAGE: false
+          VALIDATE_MARKDOWN: false  # Too strict
+          VALIDATE_GITLEAKS: false  # Handled separately if needed
           LINTER_RULES_PATH: ".github/workflows/linters"
-          DISABLE_ERRORS: true #to-do make this FALSE!!
+          DISABLE_ERRORS: false
+          # Exclude legacy Python workflows and Helm templates
+          FILTER_REGEX_EXCLUDE: "(build-test|build|e2e-testing|helm-release)\\.yaml$|charts/.*/templates/.*\\.yaml$"
 
 
 
