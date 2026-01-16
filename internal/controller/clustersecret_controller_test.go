@@ -15,7 +15,6 @@ import (
 	"k8s.io/apimachinery/pkg/api/errors"
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 	"k8s.io/apimachinery/pkg/types"
-	"sigs.k8s.io/controller-runtime/pkg/client"
 
 	clustersecretiov2 "github.com/zakkg3/ClusterSecret/api/v2"
 )
@@ -656,23 +655,4 @@ func randString(n int) string {
 		time.Sleep(time.Nanosecond)
 	}
 	return string(b)
-}
-
-// Helper to list secrets owned by a ClusterSecret
-func listOwnedSecrets(ctx context.Context, c client.Client, csecName string) ([]corev1.Secret, error) {
-	var secrets corev1.SecretList
-	if err := c.List(ctx, &secrets); err != nil {
-		return nil, err
-	}
-
-	var owned []corev1.Secret
-	for _, sec := range secrets.Items {
-		for _, ref := range sec.OwnerReferences {
-			if ref.Kind == "ClusterSecret" && ref.Name == csecName {
-				owned = append(owned, sec)
-				break
-			}
-		}
-	}
-	return owned, nil
 }
