@@ -1,0 +1,60 @@
+---
+name: E2E Tests
+
+on:
+  push:
+    branches:
+      - main
+      - master
+  pull_request:
+  workflow_dispatch:  # Allow manual trigger
+
+jobs:
+  e2e-tests:
+    name: E2E Tests
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version-file: go.mod
+          cache: true
+
+      - name: Set up Docker Buildx
+        uses: docker/setup-buildx-action@v3
+
+      - name: Install Kind
+        run: |
+          curl -Lo ./kind https://kind.sigs.k8s.io/dl/v0.25.0/kind-linux-amd64
+          chmod +x ./kind
+          sudo mv ./kind /usr/local/bin/kind
+
+      - name: Create Kind cluster
+        run: |
+          kind create cluster --name clustersecret-operator --wait 5m
+          kubectl cluster-info --context kind-clustersecret-operator
+
+      - name: Run e2e tests
+        run: make test-e2e
+        env:
+          KIND_CLUSTER: clustersecret-operator
+
+      - name: Collect logs on failure
+        if: failure()
+        run: |
+          echo "=== Kind cluster info ==="
+          kubectl cluster-info --context kind-clustersecret-operator || true
+          echo "=== Pods in all namespaces ==="
+          kubectl get pods -A || true
+          echo "=== Events in clustersecret-system ==="
+          kubectl get events -n clustersecret-system --sort-by='.lastTimestamp' || true
+          echo "=== Controller logs ==="
+          kubectl logs -l control-plane=controller-manager -n clustersecret-system --tail=100 || true
+
+      - name: Delete Kind cluster
+        if: always()
+        run: kind delete cluster --name clustersecret-operator
