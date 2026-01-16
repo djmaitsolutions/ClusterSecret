@@ -22,16 +22,16 @@ import (
 )
 
 // namespace where the project is deployed in
-const namespace = "clustersecret-system"
+const namespace = "clustersecret-operator-system"
 
-// serviceAccountName created for the project
-const serviceAccountName = "clustersecret-controller-manager"
+// serviceAccountName created for the project (namePrefix: clustersecret-operator-)
+const serviceAccountName = "clustersecret-operator-controller-manager"
 
 // metricsServiceName is the name of the metrics service of the project
-const metricsServiceName = "clustersecret-controller-manager-metrics-service"
+const metricsServiceName = "clustersecret-operator-controller-manager-metrics-service"
 
 // metricsRoleBindingName is the name of the RBAC that will be created to allow get the metrics data
-const metricsRoleBindingName = "clustersecret-metrics-binding"
+const metricsRoleBindingName = "clustersecret-operator-metrics-binding"
 
 var _ = Describe("Manager", Ordered, func() {
 	var controllerPodName string
@@ -164,7 +164,7 @@ var _ = Describe("Manager", Ordered, func() {
 		It("should ensure the metrics endpoint is serving metrics", func() {
 			By("creating a ClusterRoleBinding for the service account to allow access to metrics")
 			cmd := exec.Command("kubectl", "create", "clusterrolebinding", metricsRoleBindingName,
-				"--clusterrole=clustersecret-metrics-reader",
+				"--clusterrole=clustersecret-operator-metrics-reader",
 				fmt.Sprintf("--serviceaccount=%s:%s", namespace, serviceAccountName),
 			)
 			_, err := utils.Run(cmd)
@@ -262,7 +262,7 @@ var _ = Describe("Manager", Ordered, func() {
 			verifyCAInjection := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get",
 					"mutatingwebhookconfigurations.admissionregistration.k8s.io",
-					"clustersecret-mutating-webhook-configuration",
+					"clustersecret-operator-mutating-webhook-configuration",
 					"-o", "go-template={{ range .webhooks }}{{ .clientConfig.caBundle }}{{ end }}")
 				mwhOutput, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -276,7 +276,7 @@ var _ = Describe("Manager", Ordered, func() {
 			verifyCAInjection := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get",
 					"validatingwebhookconfigurations.admissionregistration.k8s.io",
-					"clustersecret-validating-webhook-configuration",
+					"clustersecret-operator-validating-webhook-configuration",
 					"-o", "go-template={{ range .webhooks }}{{ .clientConfig.caBundle }}{{ end }}")
 				vwhOutput, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
@@ -290,7 +290,7 @@ var _ = Describe("Manager", Ordered, func() {
 			verifyCAInjection := func(g Gomega) {
 				cmd := exec.Command("kubectl", "get",
 					"customresourcedefinitions.apiextensions.k8s.io",
-					"clustersecrets..clustersecret.io",
+					"clustersecrets.clustersecret.io",
 					"-o", "go-template={{ .spec.conversion.webhook.clientConfig.caBundle }}")
 				vwhOutput, err := utils.Run(cmd)
 				g.Expect(err).NotTo(HaveOccurred())
