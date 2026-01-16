@@ -80,6 +80,20 @@ test-e2e: manifests generate fmt vet ## Run the e2e tests. Expected an isolated 
 	}
 	KIND_CLUSTER=$(KIND_CLUSTER) go test -tags=e2e ./test/e2e/ -v -ginkgo.v
 
+.PHONY: kind-cluster
+kind-cluster: ## Create a Kind cluster for e2e testing.
+	@kind get clusters | grep -q '$(KIND_CLUSTER)' && echo "Kind cluster '$(KIND_CLUSTER)' already exists" || \
+		kind create cluster --name $(KIND_CLUSTER) --wait 5m
+
+.PHONY: kind-delete
+kind-delete: ## Delete the Kind cluster.
+	kind delete cluster --name $(KIND_CLUSTER)
+
+.PHONY: test-e2e-local
+test-e2e-local: kind-cluster docker-build ## Run e2e tests locally (creates cluster, builds image, runs tests).
+	kind load docker-image $(IMG) --name $(KIND_CLUSTER)
+	$(MAKE) test-e2e
+
 .PHONY: lint
 lint: golangci-lint ## Run golangci-lint linter
 	$(GOLANGCI_LINT) run
