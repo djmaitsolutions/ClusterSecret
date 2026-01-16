@@ -8,8 +8,11 @@
 package e2e
 
 import (
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
+	"io"
+	"net/http"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -65,10 +68,6 @@ var _ = Describe("Manager", Ordered, func() {
 	// After all tests have been executed, clean up by undeploying the controller, uninstalling CRDs,
 	// and deleting the namespace.
 	AfterAll(func() {
-		By("cleaning up the curl pod for metrics")
-		cmd := exec.Command("kubectl", "delete", "pod", "curl-metrics", "-n", namespace)
-		_, _ = utils.Run(cmd)
-
 		By("undeploying the controller-manager")
 		cmd = exec.Command("make", "undeploy")
 		_, _ = utils.Run(cmd)
@@ -103,15 +102,6 @@ var _ = Describe("Manager", Ordered, func() {
 				_, _ = fmt.Fprintf(GinkgoWriter, "Kubernetes events:\n%s", eventsOutput)
 			} else {
 				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get Kubernetes events: %s", err)
-			}
-
-			By("Fetching curl-metrics logs")
-			cmd = exec.Command("kubectl", "logs", "curl-metrics", "-n", namespace)
-			metricsOutput, err := utils.Run(cmd)
-			if err == nil {
-				_, _ = fmt.Fprintf(GinkgoWriter, "Metrics logs:\n %s", metricsOutput)
-			} else {
-				_, _ = fmt.Fprintf(GinkgoWriter, "Failed to get curl-metrics logs: %s", err)
 			}
 
 			By("Fetching controller manager pod description")
@@ -199,49 +189,8 @@ var _ = Describe("Manager", Ordered, func() {
 			}
 			Eventually(verifyMetricsServerStarted).Should(Succeed())
 
-			By("creating the curl-metrics pod to access the metrics endpoint")
-			cmd = exec.Command("kubectl", "run", "curl-metrics", "--restart=Never",
-				"--namespace", namespace,
-				"--image=curlimages/curl:latest",
-				"--overrides",
-				fmt.Sprintf(`{
-					"spec": {
-						"containers": [{
-							"name": "curl",
-							"image": "curlimages/curl:latest",
-							"command": ["/bin/sh", "-c"],
-							"args": ["curl -sf -k -H 'Authorization: Bearer %s' https://%s.%s.svc.cluster.local:8443/metrics"],
-							"securityContext": {
-								"allowPrivilegeEscalation": false,
-								"capabilities": {
-									"drop": ["ALL"]
-								},
-								"runAsNonRoot": true,
-								"runAsUser": 1000,
-								"seccompProfile": {
-									"type": "RuntimeDefault"
-								}
-							}
-						}],
-						"serviceAccount": "%s"
-					}
-				}`, token, metricsServiceName, namespace, serviceAccountName))
-			_, err = utils.Run(cmd)
-			Expect(err).NotTo(HaveOccurred(), "Failed to create curl-metrics pod")
-
-			By("waiting for the curl-metrics pod to complete.")
-			verifyCurlUp := func(g Gomega) {
-				cmd := exec.Command("kubectl", "get", "pods", "curl-metrics",
-					"-o", "jsonpath={.status.phase}",
-					"-n", namespace)
-				output, err := utils.Run(cmd)
-				g.Expect(err).NotTo(HaveOccurred())
-				g.Expect(output).To(Equal("Succeeded"), "curl pod in wrong status")
-			}
-			Eventually(verifyCurlUp, 5*time.Minute).Should(Succeed())
-
-			By("getting the metrics by checking curl-metrics logs")
-			metricsOutput := getMetricsOutput()
+			By("fetching metrics via port-forward")
+			metricsOutput := getMetricsOutput(token)
 			Expect(metricsOutput).To(ContainSubstring(
 				"controller_runtime_reconcile_total",
 			))
@@ -353,14 +302,49 @@ func serviceAccountToken() (string, error) {
 	return out, err
 }
 
-// getMetricsOutput retrieves and returns the logs from the curl pod used to access the metrics endpoint.
-func getMetricsOutput() string {
-	By("getting the curl-metrics logs")
-	cmd := exec.Command("kubectl", "logs", "curl-metrics", "-n", namespace)
-	metricsOutput, err := utils.Run(cmd)
-	Expect(err).NotTo(HaveOccurred(), "Failed to retrieve logs from curl pod")
-	// With curl -sf, a successful response means HTTP 2xx - just verify we got metrics output
-	Expect(metricsOutput).NotTo(BeEmpty(), "Expected metrics output from endpoint")
+// getMetricsOutput fetches metrics from the metrics endpoint using port-forward and Go's http client.
+func getMetricsOutput(token string) string {
+	By("starting port-forward to metrics service")
+	// Start port-forward in background
+	portForwardCmd := exec.Command("kubectl", "port-forward",
+		fmt.Sprintf("svc/%s", metricsServiceName),
+		"8443:8443", "-n", namespace)
+	portForwardCmd.Stdout = GinkgoWriter
+	portForwardCmd.Stderr = GinkgoWriter
+	err := portForwardCmd.Start()
+	Expect(err).NotTo(HaveOccurred(), "Failed to start port-forward")
+	defer func() {
+		_ = portForwardCmd.Process.Kill()
+	}()
+
+	// Wait for port-forward to be ready
+	time.Sleep(2 * time.Second)
+
+	By("fetching metrics via HTTPS")
+	// Create HTTP client that skips TLS verification (self-signed cert)
+	client := &http.Client{
+		Transport: &http.Transport{
+			TLSClientConfig: &tls.Config{InsecureSkipVerify: true}, //nolint:gosec
+		},
+		Timeout: 10 * time.Second,
+	}
+
+	req, err := http.NewRequest("GET", "https://localhost:8443/metrics", nil)
+	Expect(err).NotTo(HaveOccurred(), "Failed to create request")
+	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", token))
+
+	var metricsOutput string
+	Eventually(func(g Gomega) {
+		resp, err := client.Do(req)
+		g.Expect(err).NotTo(HaveOccurred(), "Failed to fetch metrics")
+		defer resp.Body.Close()
+		g.Expect(resp.StatusCode).To(Equal(http.StatusOK), "Expected HTTP 200")
+
+		body, err := io.ReadAll(resp.Body)
+		g.Expect(err).NotTo(HaveOccurred(), "Failed to read response body")
+		metricsOutput = string(body)
+	}, 30*time.Second, time.Second).Should(Succeed())
+
 	return metricsOutput
 }
 
